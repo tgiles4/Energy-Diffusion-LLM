@@ -3,7 +3,7 @@
 #SBATCH --job-name=text8_mdlm
 #SBATCH --qos=gpu
 #SBATCH --partition=gpuq
-#SBATCH --gres=gpu:A100.40gb:4
+#SBATCH --gres=gpu:A100.80gb:4
 
 #SBATCH --output=text8_mdlm-%j.out
 #SBATCH --error=text8_mdlm-%j.err
