@@ -73,7 +73,8 @@ class Diffusion(L.LightningModule):
   def __init__(
     self,
     config,
-    tokenizer: transformers.PreTrainedTokenizer):
+    tokenizer: transformers.PreTrainedTokenizer,
+    backbone_model=None):
     super().__init__()
     self.save_hyperparameters()
     self.config = config
@@ -93,7 +94,9 @@ class Diffusion(L.LightningModule):
     else:
       self.mask_index = self.tokenizer.mask_token_id
     self.parameterization = self.config.parameterization
-    if self.config.backbone == 'dit':
+    if backbone_model is not None:
+      self.backbone = backbone_model
+    elif self.config.backbone == 'dit':
       self.backbone = models.dit.DIT(
         self.config, vocab_size=self.vocab_size)
     elif self.config.backbone == 'dimamba':
@@ -1051,12 +1054,19 @@ class EBM(Diffusion):
     ############################
     # Load pretrained diffusion as backbone
     ############################
+    ckpt_path = config.eval.checkpoint_path
     config_diffusion = copy.deepcopy(config)
     with open_dict(config_diffusion):
-      config_diffusion.backbone = 'hf_dit' # Load pretrained diffusion as backbone
-      config_diffusion.eval.checkpoint_path = 'kuleshov-group/mdlm-owt' # Path to the pretrained diffusion model
-
-    super().__init__(config_diffusion, tokenizer)
+      if ckpt_path and str(ckpt_path).endswith('.ckpt'):
+        config_diffusion.backbone = 'dit'
+        diffusion_ckpt = Diffusion.load_from_checkpoint(
+          ckpt_path, tokenizer=tokenizer, config=config_diffusion)
+        super().__init__(config_diffusion, tokenizer,
+                         backbone_model=diffusion_ckpt.backbone)
+      else:
+        config_diffusion.backbone = 'hf_dit'
+        config_diffusion.eval.checkpoint_path = ckpt_path or 'kuleshov-group/mdlm-owt'
+        super().__init__(config_diffusion, tokenizer)
 
     self.backbone.eval()
     for p in self.backbone.parameters():
@@ -1066,11 +1076,18 @@ class EBM(Diffusion):
     ############################
 
     if self.config.ebm_backbone == 'hf_dit':
-      self.ebm = transformers.AutoModelForMaskedLM.from_pretrained(
-        config.eval.checkpoint_path, trust_remote_code=True).backbone
+      if ckpt_path and str(ckpt_path).endswith('.ckpt'):
+        self.ebm = copy.deepcopy(self.backbone)
+      else:
+        self.ebm = transformers.AutoModelForMaskedLM.from_pretrained(
+          ckpt_path or 'kuleshov-group/mdlm-owt',
+          trust_remote_code=True).backbone
     elif self.config.ebm_backbone == 'dit':
       self.ebm = models.dit.DIT(
         self.config, vocab_size=self.vocab_size)
+      if ckpt_path and str(ckpt_path).endswith('.ckpt'):
+        state = self.backbone.state_dict()
+        self.ebm.load_state_dict(state, strict=False)
     elif self.config.ebm_backbone == 'ar':
       config_arebm = copy.deepcopy(self.config)
       with open_dict(config_arebm):

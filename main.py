@@ -188,8 +188,11 @@ def _train(config, logger, tokenizer):
     config, tokenizer)
   _print_batch(train_ds, valid_ds, tokenizer)
 
-  model = diffusion.EBM(
-    config, tokenizer=valid_ds.tokenizer)
+  if config.get('train_mdlm_only', False):
+    model = diffusion.Diffusion(config, tokenizer=valid_ds.tokenizer)
+  else:
+    model = diffusion.EBM(
+      config, tokenizer=valid_ds.tokenizer)
 
   trainer = hydra.utils.instantiate(
     config.trainer,

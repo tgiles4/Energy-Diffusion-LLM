@@ -8,6 +8,7 @@ defaults:
   - /lr_scheduler: constant_warmup
 
 mode: train  # train / ppl_eval / sample_eval
+train_mdlm_only: false  # if true, train Diffusion (MDLM) only; if false, train EBM (NCE) from checkpoint
 diffusion: absorbing_state
 backbone: dit  # dit / dimamba / ar : backbone for Diffusion
 ebm_backbone: hf_dit  # dit / dimamba / ar : backbone for EBM
