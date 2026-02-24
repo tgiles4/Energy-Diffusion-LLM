@@ -7,6 +7,7 @@
 
 #SBATCH --output=text8_mdlm-%j.out
 #SBATCH --error=text8_mdlm-%j.err
+#SBATCH --constraint=amd
 
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1

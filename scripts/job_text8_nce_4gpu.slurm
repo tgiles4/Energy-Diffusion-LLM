@@ -10,6 +10,7 @@
 
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
+#SBATCH --constraint=amd
 
 #SBATCH --mem=64G
 #SBATCH --time=0-05:00:00
