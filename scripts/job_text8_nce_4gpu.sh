@@ -24,7 +24,7 @@ mkdir -p ${path}
 cd ${path}
 
 if [ ! -d "Energy-Diffusion-LLM" ]; then
-  git clone https://github.com/MinkaiXu/Energy-Diffusion-LLM.git
+  git clone https://github.com/tgiles4/Energy-Diffusion-LLM.git
 fi
 cd Energy-Diffusion-LLM
 
