@@ -1,0 +1,27 @@
+# For uv: install with
+#   uv pip install -r requirements.txt
+# PyTorch with CUDA 12.1 (use extra index so uv gets the right build)
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch
+# Pip deps from requirements.yaml (conda pip section)
+causal-conv1d
+datasets==2.18.0
+einops==0.7.0
+fsspec==2024.2.0
+h5py==3.10.0
+hydra-core==1.3.2
+ipdb==0.13.13
+lightning==2.2.1
+mamba-ssm
+omegaconf==2.3.0
+packaging==23.2
+pandas==2.2.1
+rich==13.7.1
+seaborn==0.13.2
+scikit-learn==1.4.0
+timm==0.9.16
+transformers==4.38.2
+triton==2.2.0
+wandb==0.13.5
+# flash-attn may need to be installed separately on some clusters (build from source)
+flash-attn

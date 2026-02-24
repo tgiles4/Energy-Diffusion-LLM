@@ -1,5 +1,5 @@
 #!/bin/bash
-# Text8 NCE EBM finetuning from MDLM checkpoint (4× A100). Run after job_text8_mdlm_4gpu.sh.
+# Text8 NCE EBM finetuning from MDLM checkpoint (4× A100). Run after job_text8_mdlm_4gpu.slurm. Uses uv + Python venv.
 #SBATCH --job-name=text8_nce
 #SBATCH --qos=gpu
 #SBATCH --partition=gpuq
@@ -7,6 +7,7 @@
 
 #SBATCH --output=text8_nce-%j.out
 #SBATCH --error=text8_nce-%j.err
+#SBATCH --export=NONE
 
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -15,10 +16,11 @@
 #SBATCH --mem=64G
 #SBATCH --time=0-05:00:00
 
-# Set path and MDLM checkpoint (run after job_text8_mdlm_4gpu.sh)
+# Set path and MDLM checkpoint (run after job_text8_mdlm_4gpu.slurm). With --export=NONE, set SCRATCH if needed.
+export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path=${SCRATCH}/edlm
 # Path to MDLM checkpoint from script 1; override when submitting if needed:
-# sbatch --export=ALL,MDLM_CKPT=/path/to/checkpoints/last.ckpt job_text8_nce_4gpu.sh
+# sbatch --export=NONE,MDLM_CKPT=/path/to/checkpoints/last.ckpt job_text8_nce_4gpu.slurm
 export MDLM_CKPT="${MDLM_CKPT:-${path}/checkpoints/last.ckpt}"
 
 mkdir -p ${path}
@@ -29,10 +31,17 @@ if [ ! -d "Energy-Diffusion-LLM" ]; then
 fi
 cd Energy-Diffusion-LLM
 
-# Load modules and conda env
-# module load gnu9/9.3.0   # uncomment if your partition requires it
-module load miniconda3/4.9.2-vl
-conda activate edlm
+# Load CUDA 12.x and Python 3.8 (same as MDLM job)
+module load gnu9/9.3.0
+module load python/3.8.6-ff
+module load cuda/12.4.0
+
+# uv + Python venv (same as MDLM job; venv at ${path}/.venv). Uses module Python 3.8.
+VENV="${path}/.venv"
+if [ ! -d "${VENV}" ]; then
+  uv venv "${VENV}" --python "$(which python3)"
+  uv pip install --python "${VENV}/bin/python" -r requirements.txt
+fi
 
 # W&B: load API key from a file (avoids putting secrets in the script or sbatch env).
 # Create once: echo "YOUR_WANDB_API_KEY" > ~/.wandb_api_key && chmod 600 ~/.wandb_api_key
@@ -40,11 +49,9 @@ if [ -f "${HOME}/.wandb_api_key" ]; then
   export WANDB_API_KEY=$(cat "${HOME}/.wandb_api_key")
 fi
 
-conda env update -f requirements.yaml --name edlm 2>/dev/null || true
-
 # NCE EBM finetuning from MDLM: pooling + scalar energy head, 10k steps,
 # cosine LR with 2000-step warmup, same optimizer settings
-python -u -m main \
+"${VENV}/bin/python" -u -m main \
   path=${path} \
   train_mdlm_only=false \
   data=text8 \
