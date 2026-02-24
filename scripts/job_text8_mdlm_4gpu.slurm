@@ -2,7 +2,7 @@
 # Text8 MDLM backbone training (4× A100). Uses uv + Python venv (no conda).
 #SBATCH --job-name=text8_mdlm
 #SBATCH --qos=gpu
-#SBATCH --partition=gpuq
+#SBATCH --partition=contrib-gpuq
 #SBATCH --gres=gpu:A100.80gb:4
 
 #SBATCH --output=text8_mdlm-%j.out
