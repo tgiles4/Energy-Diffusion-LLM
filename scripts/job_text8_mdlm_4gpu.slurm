@@ -36,9 +36,9 @@ CONDA_BIN="$(dirname "$CONDA_EXE")"             # .../bin
 CONDA_PREFIX_ROOT="$(dirname "$CONDA_BIN")"     # ... (the conda install prefix)
 
 # Find a working interpreter inside the prefix
-if   [ -x "${CONDA_BIN}/python" ];   then CONDA_PY="${CONDA_BIN}/python"
-elif [ -x "${CONDA_BIN}/python3" ];  then CONDA_PY="${CONDA_BIN}/python3"
-elif [ -x "${CONDA_BIN}/python3.8" ];then CONDA_PY="${CONDA_BIN}/python3.8"
+if   [ -x "${CONDA_BIN}/python3.8" ]; then CONDA_PY="${CONDA_BIN}/python3.8"
+elif [ -x "${CONDA_BIN}/python3" ];   then CONDA_PY="${CONDA_BIN}/python3"
+elif [ -x "${CONDA_BIN}/python" ];    then CONDA_PY="${CONDA_BIN}/python"
 else
   echo "ERROR: No python interpreter found in ${CONDA_BIN}" >&2
   ls -l "${CONDA_BIN}/python"* >&2 || true
@@ -46,19 +46,13 @@ else
 fi
 
 # Safe conda wrapper (bypasses broken shebang)
-conda() { "${CONDA_PY}" "${CONDA_EXE}" "$@"; }
-
-# Now conda calls work
-source "${CONDA_PREFIX_ROOT}/etc/profile.d/conda.sh"
+_conda() { "${CONDA_PY}" "${CONDA_EXE}" "$@"; }
 
 # Create conda environment if it doesn't exist (Python 3.9+ required)
 CONDA_ENV="${path}/edlm_env"
 if [ ! -d "${CONDA_ENV}" ]; then
-  conda create -y -p "${CONDA_ENV}" python=3.9
-  conda activate "${CONDA_ENV}"
-  conda install -y --file requirements.txt
-else
-  conda activate "${CONDA_ENV}"
+  _conda create -y -p "${CONDA_ENV}" python=3.9
+  _conda install -y --file requirements.txt
 fi
 
 # W&B: load API key from a file (avoids putting secrets in the script or sbatch env).
@@ -70,7 +64,7 @@ fi
 # Text8 MDLM training (Austin et al. 2021; Campbell et al. 2024):
 # 12-layer transformer, 12 heads, hidden 784, length 256, 1M steps, batch 512,
 # cosine LR with 2000-step warmup, AdamW lr 3e-4, weight decay 0.03, channel dropout 0.05
-python -u -m main \
+"${CONDA_ENV}/bin/python" -u -m main \
   path=${path} \
   train_mdlm_only=true \
   data=text8 \
