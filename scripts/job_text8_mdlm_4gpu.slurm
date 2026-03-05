@@ -1,9 +1,9 @@
 #!/bin/bash
-# Text8 MDLM backbone training (4× A100). Uses uv + Python venv (no conda).
+# Text8 MDLM backbone training (1× A100 80GB). Uses Miniconda (cluster module).
 #SBATCH --job-name=text8_mdlm
 #SBATCH --qos=gpu
 #SBATCH --partition=contrib-gpuq
-#SBATCH --gres=gpu:A100.80gb:4
+#SBATCH --gres=gpu:A100.80gb:1
 
 #SBATCH --output=text8_mdlm-%j.out
 #SBATCH --error=text8_mdlm-%j.err
@@ -27,16 +27,38 @@ if [ ! -d "Energy-Diffusion-LLM" ]; then
 fi
 cd Energy-Diffusion-LLM
 
-# Load CUDA 12.x (PyTorch cu121 works with 12.2–12.6) and Python 3.8 (cluster has 3.8, not 3.9)
-module load gnu9/9.3.0
-module load python/3.8.6-ff
-module load cuda/12.4.0
+# Load modules: compiler base (required for LMod hierarchy), Miniconda, and CUDA
+module load miniconda3/4.9.2-vl
 
-# uv + Python venv (ensure uv is on PATH: e.g. ~/.local/bin). Uses module Python 3.8.
-VENV="${path}/.venv"
-if [ ! -d "${VENV}" ]; then
-  uv venv "${VENV}" --python "$(which python3)"
-  uv pip install --python "${VENV}/bin/python" -r requirements.txt
+# Resolve conda prefix from PATH (provided by the module)
+CONDA_EXE="$(command -v conda)"                 # .../bin/conda
+CONDA_BIN="$(dirname "$CONDA_EXE")"             # .../bin
+CONDA_PREFIX_ROOT="$(dirname "$CONDA_BIN")"     # ... (the conda install prefix)
+
+# Find a working interpreter inside the prefix
+if   [ -x "${CONDA_BIN}/python" ];   then CONDA_PY="${CONDA_BIN}/python"
+elif [ -x "${CONDA_BIN}/python3" ];  then CONDA_PY="${CONDA_BIN}/python3"
+elif [ -x "${CONDA_BIN}/python3.8" ];then CONDA_PY="${CONDA_BIN}/python3.8"
+else
+  echo "ERROR: No python interpreter found in ${CONDA_BIN}" >&2
+  ls -l "${CONDA_BIN}/python"* >&2 || true
+  exit 1
+fi
+
+# Safe conda wrapper (bypasses broken shebang)
+conda() { "${CONDA_PY}" "${CONDA_EXE}" "$@"; }
+
+# Now conda calls work
+source "${CONDA_PREFIX_ROOT}/etc/profile.d/conda.sh"
+
+# Create conda environment if it doesn't exist (Python 3.9+ required)
+CONDA_ENV="${path}/edlm_env"
+if [ ! -d "${CONDA_ENV}" ]; then
+  conda create -y -p "${CONDA_ENV}" python=3.9
+  conda activate "${CONDA_ENV}"
+  conda install -y --file requirements.txt
+else
+  conda activate "${CONDA_ENV}"
 fi
 
 # W&B: load API key from a file (avoids putting secrets in the script or sbatch env).
@@ -48,7 +70,7 @@ fi
 # Text8 MDLM training (Austin et al. 2021; Campbell et al. 2024):
 # 12-layer transformer, 12 heads, hidden 784, length 256, 1M steps, batch 512,
 # cosine LR with 2000-step warmup, AdamW lr 3e-4, weight decay 0.03, channel dropout 0.05
-"${VENV}/bin/python" -u -m main \
+python -u -m main \
   path=${path} \
   train_mdlm_only=true \
   data=text8 \
