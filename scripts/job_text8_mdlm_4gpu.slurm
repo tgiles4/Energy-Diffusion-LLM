@@ -45,7 +45,6 @@ fi
 # 12-layer transformer, 12 heads, hidden 784, length 256, 1M steps, batch 512,
 # cosine LR with 2000-step warmup, AdamW lr 3e-4, weight decay 0.03, channel dropout 0.05
 "$ENV/bin/python" -u -m main \
-  path=${path} \
   train_mdlm_only=true \
   data=text8 \
   model=small \

@@ -48,7 +48,6 @@ fi
 # NCE EBM finetuning from MDLM: pooling + scalar energy head, 10k steps,
 # cosine LR with 2000-step warmup, same optimizer settings
 "$ENV/bin/python" -u -m main \
-  path=${path} \
   train_mdlm_only=false \
   data=text8 \
   model=small \
