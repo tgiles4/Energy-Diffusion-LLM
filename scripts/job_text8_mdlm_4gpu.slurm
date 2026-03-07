@@ -50,7 +50,6 @@ fi
   data=text8 \
   model=small \
   model.length=256 \
-  model.hidden_size=784 \
   model.n_blocks=12 \
   model.n_heads=12 \
   model.dropout=0.05 \
