@@ -1,5 +1,5 @@
 #!/bin/bash
-# Text8 NCE EBM finetuning from MDLM checkpoint (4× A100). Run after job_text8_mdlm_4gpu.slurm. Uses Miniconda (cluster module).
+# Text8 NCE EBM finetuning from MDLM checkpoint (4× A100). Run after job_text8_mdlm_4gpu.slurm.
 #SBATCH --job-name=text8_nce
 #SBATCH --qos=gpu
 #SBATCH --partition=gpuq
@@ -31,39 +31,13 @@ if [ ! -d "Energy-Diffusion-LLM" ]; then
 fi
 cd Energy-Diffusion-LLM
 
-# Load modules: compiler base (required for LMod hierarchy), Miniconda, and CUDA
-module load miniconda3/4.9.2-vl
+# Load modules
+module load hosts/hopper
+module load gnu10/10.3.0-ya
+module load python/3.9.9-jh
+module load cuda/12.4.0
 
-# Resolve conda prefix from PATH (provided by the module)
-CONDA_EXE="$(command -v conda)"                 # .../bin/conda
-CONDA_BIN="$(dirname "$CONDA_EXE")"             # .../bin
-CONDA_PREFIX_ROOT="$(dirname "$CONDA_BIN")"     # ... (the conda install prefix)
-
-# Find a working interpreter inside the prefix
-if   [ -x "${CONDA_BIN}/python" ];   then CONDA_PY="${CONDA_BIN}/python"
-elif [ -x "${CONDA_BIN}/python3" ];  then CONDA_PY="${CONDA_BIN}/python3"
-elif [ -x "${CONDA_BIN}/python3.8" ];then CONDA_PY="${CONDA_BIN}/python3.8"
-else
-  echo "ERROR: No python interpreter found in ${CONDA_BIN}" >&2
-  ls -l "${CONDA_BIN}/python"* >&2 || true
-  exit 1
-fi
-
-# Safe conda wrapper (bypasses broken shebang)
-conda() { "${CONDA_PY}" "${CONDA_EXE}" "$@"; }
-
-# Now conda calls work
-source "${CONDA_PREFIX_ROOT}/etc/profile.d/conda.sh"
-
-# Create conda environment if it doesn't exist (Python 3.9+ required)
-CONDA_ENV="${path}/edlm_env"
-if [ ! -d "${CONDA_ENV}" ]; then
-  conda create -y -p "${CONDA_ENV}" python=3.9
-  conda activate "${CONDA_ENV}"
-  conda install -y --file requirements.txt
-else
-  conda activate "${CONDA_ENV}"
-fi
+ENV=$SCRATCH/edlm/venv
 
 # W&B: load API key from a file (avoids putting secrets in the script or sbatch env).
 # Create once: echo "YOUR_WANDB_API_KEY" > ~/.wandb_api_key && chmod 600 ~/.wandb_api_key
@@ -73,7 +47,7 @@ fi
 
 # NCE EBM finetuning from MDLM: pooling + scalar energy head, 10k steps,
 # cosine LR with 2000-step warmup, same optimizer settings
-python -u -m main \
+"$ENV/bin/python" -u -m main \
   path=${path} \
   train_mdlm_only=false \
   data=text8 \

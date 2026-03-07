@@ -1,5 +1,5 @@
 #!/bin/bash
-# Text8 MDLM backbone training (1× A100 80GB). Uses Miniconda (cluster module).
+# Text8 MDLM backbone training (1× A100 80GB).
 #SBATCH --job-name=text8_mdlm
 #SBATCH --qos=gpu
 #SBATCH --partition=contrib-gpuq
@@ -27,33 +27,13 @@ if [ ! -d "Energy-Diffusion-LLM" ]; then
 fi
 cd Energy-Diffusion-LLM
 
-# Load modules: compiler base (required for LMod hierarchy), Miniconda, and CUDA
-module load miniconda3/4.9.2-vl
+# Load modules
+module load hosts/hopper
+module load gnu10/10.3.0-ya
+module load python/3.9.9-jh
+module load cuda/12.4.0
 
-# Resolve conda prefix from PATH (provided by the module)
-CONDA_EXE="$(command -v conda)"                 # .../bin/conda
-CONDA_BIN="$(dirname "$CONDA_EXE")"             # .../bin
-CONDA_PREFIX_ROOT="$(dirname "$CONDA_BIN")"     # ... (the conda install prefix)
-
-# Find a working interpreter inside the prefix
-if   [ -x "${CONDA_BIN}/python3.8" ]; then CONDA_PY="${CONDA_BIN}/python3.8"
-elif [ -x "${CONDA_BIN}/python3" ];   then CONDA_PY="${CONDA_BIN}/python3"
-elif [ -x "${CONDA_BIN}/python" ];    then CONDA_PY="${CONDA_BIN}/python"
-else
-  echo "ERROR: No python interpreter found in ${CONDA_BIN}" >&2
-  ls -l "${CONDA_BIN}/python"* >&2 || true
-  exit 1
-fi
-
-# Safe conda wrapper (bypasses broken shebang)
-_conda() { "${CONDA_PY}" "${CONDA_EXE}" "$@"; }
-
-# Create conda environment if it doesn't exist (Python 3.9+ required)
-CONDA_ENV="${path}/edlm_env"
-if [ ! -d "${CONDA_ENV}" ]; then
-  _conda create -y -p "${CONDA_ENV}" python=3.9
-  _conda install -y --file requirements.txt
-fi
+ENV=$SCRATCH/edlm/venv
 
 # W&B: load API key from a file (avoids putting secrets in the script or sbatch env).
 # Create once: echo "YOUR_WANDB_API_KEY" > ~/.wandb_api_key && chmod 600 ~/.wandb_api_key
@@ -64,7 +44,7 @@ fi
 # Text8 MDLM training (Austin et al. 2021; Campbell et al. 2024):
 # 12-layer transformer, 12 heads, hidden 784, length 256, 1M steps, batch 512,
 # cosine LR with 2000-step warmup, AdamW lr 3e-4, weight decay 0.03, channel dropout 0.05
-"${CONDA_ENV}/bin/python" -u -m main \
+"$ENV/bin/python" -u -m main \
   path=${path} \
   train_mdlm_only=true \
   data=text8 \
