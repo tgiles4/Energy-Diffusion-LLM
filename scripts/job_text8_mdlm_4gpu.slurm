@@ -55,7 +55,7 @@ fi
   model.dropout=0.05 \
   loader.global_batch_size=512 \
   trainer.max_steps=1000000 \
-  trainer.val_check_interval=10000 \
+  trainer.val_check_interval=1.0 \
   optim.lr=0.0003 \
   optim.weight_decay=0.03 \
   lr_scheduler=cosine_decay_warmup \
