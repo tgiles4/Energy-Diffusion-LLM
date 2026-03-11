@@ -1,20 +1,20 @@
 #!/bin/bash
-# Text8 NCE EBM finetuning from MDLM checkpoint (1× A100 80GB; multi-GPU can hit DataLoader BrokenPipe).
-# Run after job_text8_mdlm_4gpu.slurm.
+# Text8 NCE EBM finetuning from MDLM checkpoint (2× A100 80GB; ntasks must match for DDP).
+# Run after job_text8_mdlm_4gpu.slurm. Use loader.num_workers=0 to avoid DataLoader BrokenPipe with multi-GPU.
 # Partition: gpuq = non-pre-emptible; contrib-gpuq = same nodes, can be pre-empted (use if gpuq queue is long).
-# sgpu: (A)llocated, (I)dle — need I:1 for 1 free GPU.
+# sgpu: (A)llocated, (I)dle — need I:2 for 2 free GPUs.
 #SBATCH --job-name=text8_nce
 #SBATCH --qos=gpu
 #SBATCH --partition=contrib-gpuq
-#SBATCH --gres=gpu:A100.80gb:1
+#SBATCH --gres=gpu:A100.80gb:2
 
 #SBATCH --output=text8_nce-%j.out
 #SBATCH --error=text8_nce-%j.err
 #SBATCH --export=NONE
 
 #SBATCH --nodes=1
-# For multi-GPU (2+): set ntasks-per-node to match gres (e.g. 2 for 2 GPUs) or Lightning raises "does not match"
-#SBATCH --ntasks-per-node=1
+# Must match gres GPU count so Lightning SLURM check passes (devices=2).
+#SBATCH --ntasks-per-node=2
 #SBATCH --constraint=amd
 
 #SBATCH --mem=64G
@@ -65,6 +65,7 @@ fi
   eval.checkpoint_path=${MDLM_CKPT} \
   ebm_backbone=dit \
   loader.global_batch_size=512 \
+  loader.num_workers=0 \
   trainer.max_steps=10000 \
   trainer.val_check_interval=1.0 \
   optim.lr=0.0003 \
