@@ -6,7 +6,7 @@
 #SBATCH --job-name=text8_nce
 #SBATCH --qos=gpu
 #SBATCH --partition=contrib-gpuq
-#SBATCH --gres=gpu:A100.80gb:1
+#SBATCH --gres=gpu:A100.80gb:2
 
 #SBATCH --output=text8_nce-%j.out
 #SBATCH --error=text8_nce-%j.err
@@ -57,7 +57,7 @@ fi
   data=text8 \
   model=small \
   model.length=256 \
-  model.hidden_size=784 \
+  model.hidden_size=768 \
   model.n_blocks=12 \
   model.n_heads=12 \
   model.dropout=0.05 \
