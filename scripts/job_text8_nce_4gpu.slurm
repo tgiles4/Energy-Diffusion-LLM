@@ -6,13 +6,14 @@
 #SBATCH --job-name=text8_nce
 #SBATCH --qos=gpu
 #SBATCH --partition=contrib-gpuq
-#SBATCH --gres=gpu:A100.80gb:2
+#SBATCH --gres=gpu:A100.80gb:1
 
 #SBATCH --output=text8_nce-%j.out
 #SBATCH --error=text8_nce-%j.err
 #SBATCH --export=NONE
 
 #SBATCH --nodes=1
+# For multi-GPU (2+): set ntasks-per-node to match gres (e.g. 2 for 2 GPUs) or Lightning raises "does not match"
 #SBATCH --ntasks-per-node=1
 #SBATCH --constraint=amd
 
@@ -65,7 +66,7 @@ fi
   ebm_backbone=dit \
   loader.global_batch_size=512 \
   trainer.max_steps=10000 \
-  trainer.val_check_interval=2000 \
+  trainer.val_check_interval=1.0 \
   optim.lr=0.0003 \
   optim.weight_decay=0.03 \
   lr_scheduler=cosine_decay_warmup \
