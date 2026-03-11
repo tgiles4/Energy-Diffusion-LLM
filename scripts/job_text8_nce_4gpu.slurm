@@ -49,11 +49,16 @@ ENV=$SCRATCH/edlm/venv
 if [ -f "${HOME}/.wandb_api_key" ]; then
   export WANDB_API_KEY=$(cat "${HOME}/.wandb_api_key")
 fi
+# If no key, disable W&B so srun tasks don't fail with "api_key not configured"
+if [ -z "${WANDB_API_KEY}" ]; then
+  export WANDB_MODE=disabled
+fi
 
 # NCE EBM finetuning from MDLM: pooling + scalar energy head, 10k steps,
 # cosine LR with 2000-step warmup, same optimizer settings.
 # srun launches one process per task so DDP uses both GPUs (ntasks-per-node=2).
-srun --ntasks=2 --ntasks-per-node=2 "$ENV/bin/python" -u -m main \
+# Pass WANDB_API_KEY into srun so both tasks see it (avoids "api_key not configured" on rank 1).
+srun --ntasks=2 --ntasks-per-node=2 env WANDB_API_KEY="${WANDB_API_KEY}" WANDB_MODE="${WANDB_MODE}" "$ENV/bin/python" -u -m main \
   ++path=${path} \
   train_mdlm_only=false \
   data=text8 \
