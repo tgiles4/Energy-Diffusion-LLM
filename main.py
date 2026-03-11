@@ -8,11 +8,12 @@ import rich.syntax
 import rich.tree
 import torch
 
-# PyTorch 2.6+ defaults to weights_only=True; allow OmegaConf types in checkpoints
+# PyTorch 2.6+ defaults to weights_only=True; allow OmegaConf/typing types in checkpoints
 if hasattr(torch.serialization, 'add_safe_globals'):
+    from typing import Any
     from omegaconf.base import ContainerMetadata
     torch.serialization.add_safe_globals([
-        omegaconf.DictConfig, omegaconf.ListConfig, ContainerMetadata,
+        omegaconf.DictConfig, omegaconf.ListConfig, ContainerMetadata, Any,
     ])
 
 import dataloader
