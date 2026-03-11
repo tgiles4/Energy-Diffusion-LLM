@@ -51,8 +51,9 @@ if [ -f "${HOME}/.wandb_api_key" ]; then
 fi
 
 # NCE EBM finetuning from MDLM: pooling + scalar energy head, 10k steps,
-# cosine LR with 2000-step warmup, same optimizer settings
-"$ENV/bin/python" -u -m main \
+# cosine LR with 2000-step warmup, same optimizer settings.
+# srun launches one process per task so DDP uses both GPUs (ntasks-per-node=2).
+srun --ntasks=2 --ntasks-per-node=2 "$ENV/bin/python" -u -m main \
   ++path=${path} \
   train_mdlm_only=false \
   data=text8 \
