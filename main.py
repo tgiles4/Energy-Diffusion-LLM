@@ -8,13 +8,14 @@ import rich.syntax
 import rich.tree
 import torch
 
-# PyTorch 2.6+ defaults to weights_only=True; allow OmegaConf/typing types in checkpoints
-if hasattr(torch.serialization, 'add_safe_globals'):
-    from typing import Any
-    from omegaconf.base import ContainerMetadata
-    torch.serialization.add_safe_globals([
-        omegaconf.DictConfig, omegaconf.ListConfig, ContainerMetadata, Any,
-    ])
+# PyTorch 2.6+ defaults to weights_only=True; our checkpoints contain OmegaConf/config and
+# are trusted — use weights_only=False when not explicitly set so Lightning checkpoint load works.
+_orig_torch_load = torch.load
+def _torch_load_allow_trusted(*args, **kwargs):
+    if 'weights_only' not in kwargs:
+        kwargs['weights_only'] = False
+    return _orig_torch_load(*args, **kwargs)
+torch.load = _torch_load_allow_trusted
 
 import dataloader
 import diffusion
