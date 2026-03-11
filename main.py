@@ -8,6 +8,10 @@ import rich.syntax
 import rich.tree
 import torch
 
+# PyTorch 2.6+ defaults to weights_only=True; allow OmegaConf types in checkpoints
+if hasattr(torch.serialization, 'add_safe_globals'):
+    torch.serialization.add_safe_globals([omegaconf.DictConfig, omegaconf.ListConfig])
+
 import dataloader
 import diffusion
 import utils

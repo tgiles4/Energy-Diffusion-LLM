@@ -1,9 +1,12 @@
 #!/bin/bash
-# Text8 NCE EBM finetuning from MDLM checkpoint (4× A100). Run after job_text8_mdlm_4gpu.slurm.
+# Text8 NCE EBM finetuning from MDLM checkpoint (1× A100 80GB; multi-GPU can hit DataLoader BrokenPipe).
+# Run after job_text8_mdlm_4gpu.slurm.
+# Partition: gpuq = non-pre-emptible; contrib-gpuq = same nodes, can be pre-empted (use if gpuq queue is long).
+# sgpu: (A)llocated, (I)dle — need I:1 for 1 free GPU.
 #SBATCH --job-name=text8_nce
 #SBATCH --qos=gpu
-#SBATCH --partition=contrib-gpuq
-#SBATCH --gres=gpu:A100.80gb:4
+#SBATCH --partition=gpuq
+#SBATCH --gres=gpu:A100.80gb:1
 
 #SBATCH --output=text8_nce-%j.out
 #SBATCH --error=text8_nce-%j.err
