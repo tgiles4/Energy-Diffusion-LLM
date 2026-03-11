@@ -2,8 +2,8 @@
 # Text8 NCE EBM finetuning from MDLM checkpoint (4× A100). Run after job_text8_mdlm_4gpu.slurm.
 #SBATCH --job-name=text8_nce
 #SBATCH --qos=gpu
-#SBATCH --partition=gpuq
-#SBATCH --gres=gpu:A100.40gb:4
+#SBATCH --partition=contrib-gpuq
+#SBATCH --gres=gpu:A100.80gb:4
 
 #SBATCH --output=text8_nce-%j.out
 #SBATCH --error=text8_nce-%j.err
@@ -19,8 +19,9 @@
 # Set path and MDLM checkpoint (run after job_text8_mdlm_4gpu.slurm). With --export=NONE, set SCRATCH if needed.
 export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path=${SCRATCH}/edlm
-# Path to MDLM checkpoint from script 1; override when submitting if needed:
-# sbatch --export=NONE,MDLM_CKPT=/path/to/checkpoints/last.ckpt job_text8_nce_4gpu.slurm
+# Path to MDLM checkpoint from script 1 (default: last.ckpt from same run).
+# For a specific step (e.g. 50k): MDLM_CKPT=${path}/checkpoints/checkpoint_step=50000.ckpt
+# Override when submitting: sbatch --export=NONE,MDLM_CKPT=/path/to/checkpoint.ckpt job_text8_nce_4gpu.slurm
 export MDLM_CKPT="${MDLM_CKPT:-${path}/checkpoints/last.ckpt}"
 
 mkdir -p ${path}
@@ -48,6 +49,7 @@ fi
 # NCE EBM finetuning from MDLM: pooling + scalar energy head, 10k steps,
 # cosine LR with 2000-step warmup, same optimizer settings
 "$ENV/bin/python" -u -m main \
+  ++path=${path} \
   train_mdlm_only=false \
   data=text8 \
   model=small \
