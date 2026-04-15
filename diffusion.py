@@ -1111,11 +1111,25 @@ class EBM(Diffusion):
         self.config.model.hidden_size,
         self.config.model.hidden_size,
         self.config.model.cond_dim)
-      self.ebm.energy_head = nn.Sequential(
-        nn.Linear(config.model.hidden_size, config.model.hidden_size, bias=True),
-        nn.ReLU(),
-        nn.Linear(config.model.hidden_size, 1, bias=False),
-      )
+      h = config.model.hidden_size
+      ebm_readout = getattr(self.config, 'ebm_readout', 'mean_pool')
+      if ebm_readout == 'mean_pool':
+        self.ebm.energy_head = nn.Sequential(
+          nn.Linear(h, h, bias=True),
+          nn.ReLU(),
+          nn.Linear(h, 1, bias=False),
+        )
+      elif ebm_readout == 'token_additive':
+        self.ebm.token_mlp = nn.Sequential(
+          nn.Linear(h, h, bias=True),
+          nn.ReLU(),
+          nn.Linear(h, h, bias=True),
+        )
+        self.ebm.token_score = nn.Linear(h, 1, bias=True)
+        self.ebm.token_gate = nn.Linear(h, 1, bias=True)
+      else:
+        raise ValueError(
+          f'Unknown ebm_readout: {ebm_readout!r} (use mean_pool or token_additive)')
 
     self.backbone.ebm = self.ebm # Set the EBM as part of the backbone
     if self.config.training.ema > 0:
@@ -1126,7 +1140,38 @@ class EBM(Diffusion):
     else:
       self.ema = None
 
-  def ebm_forward(self, xt, sigma, x0=None, log_p_x0=None, attention_mask=None):
+  def _dit_energy_from_sequence_hidden(self, x):
+    """Scalar energy from DiT `self.ebm` sequence hidden states after `output_layer`.
+
+    Args:
+      x: Tensor [B, T, H] (same dtype/device as encoder output).
+
+    Returns:
+      energy: Tensor [B, 1]
+      token_contrib: Optional[Tensor [B, T]] — per-position nonnegative weights when
+        `ebm_readout` is ``token_additive``; else ``None``.
+    """
+    ebm_readout = getattr(self.config, 'ebm_readout', 'mean_pool')
+    if ebm_readout == 'token_additive':
+      h = self.ebm.token_mlp(x)
+      score = self.ebm.token_score(h)
+      gate = torch.sigmoid(self.ebm.token_gate(h))
+      token_contrib = (gate * F.softplus(score)).squeeze(-1)
+      energy = token_contrib.sum(dim=-1, keepdim=True)
+      return energy, token_contrib
+    mean_pool = x.mean(dim=1)
+    energy = self.ebm.energy_head(mean_pool)
+    return energy, None
+
+  def ebm_forward(
+      self,
+      xt,
+      sigma,
+      x0=None,
+      log_p_x0=None,
+      attention_mask=None,
+      return_token_contrib: bool = False,
+  ):
     sigma = self._process_sigma(sigma)
 
     with torch.cuda.amp.autocast(dtype=torch.float32):
@@ -1146,8 +1191,7 @@ class EBM(Diffusion):
             x = self.ebm.blocks[i](x, rotary_cos_sin, c, seqlens=None)
           x = self.ebm.output_layer(x, c)
 
-          mean_pool = x.mean(dim=1)
-          energy = self.ebm.energy_head(mean_pool)
+          energy, token_contrib = self._dit_energy_from_sequence_hidden(x)
 
       elif self.config.ebm_backbone == 'ar':
         parameterization = self.parameterization
@@ -1192,16 +1236,30 @@ class EBM(Diffusion):
           energy_diffusion = (log_p_x0.gather(
             -1, x0[:, :, None])[:, :, 0]).sum(dim=-1, keepdim=True)
           energy = - energy_ar + energy_diffusion
+        token_contrib = None
 
       else:
         raise ValueError(
           f'Unknown backbone: {self.config.ebm_backbone}')
-          
+
+    if return_token_contrib:
+      if self.config.ebm_backbone not in ('dit', 'hf_dit'):
+        raise ValueError(
+          'return_token_contrib is only supported for ebm_backbone dit or hf_dit')
+      return energy, token_contrib
     return energy
   
   @torch.no_grad()
   def _sample(self, num_steps=None, eps=1e-5):
-    """Generate samples from the model."""
+    """Generate samples from the model.
+
+    With ``sampling.ebm_remask`` and ``ebm_readout=token_additive``, steps inside
+    ``is_end <= t <= is_start`` use one ``p(x0|xt)``, choice-A ``x0_prop``, a single
+    ``ebm_forward`` (``token_contrib``), and per-mask-site remask with
+    ``P(keep MASK) = w_i / (w_i + tau)`` where ``tau`` is mean masked weight.
+    If masked weight sum ``< ebm_remask_weight_eps`` or readout has no per-token
+    weights, falls back to stock ``_ddpm_caching_update``.
+    """
     batch_size_per_gpu = self.config.loader.eval_batch_size
     assert self.parameterization != 'ar'
     # Lightning auto-casting is not working in this method for some reason
@@ -1214,39 +1272,83 @@ class EBM(Diffusion):
       1, eps, num_steps + 1, device=self.device)
     dt = (1 - eps) / num_steps
     p_x0_cache = None
+    is_start = self.config.sampling.is_start
+    is_end = self.config.sampling.is_end
+    ebm_remask = getattr(self.config.sampling, 'ebm_remask', False)
+    eps_w = getattr(self.config.sampling, 'ebm_remask_weight_eps', 1e-8)
 
     for i in range(num_steps):
       t = timesteps[i] * torch.ones(
         x.shape[0], 1, device=self.device)
+      sigma_t, _ = self.noise(t)
+      if sigma_t.dim() == 1:
+        sigma_ebm = sigma_t.unsqueeze(-1)
+      else:
+        sigma_ebm = sigma_t
+      tc = float(t[0, 0])
+      in_band = (tc <= is_start) and (tc >= is_end)
+      use_energy_remask = (
+        in_band and ebm_remask
+        and self.config.ebm_backbone in ('dit', 'hf_dit'))
+
+      took_remask = False
       if self.sampler == 'ddpm_cache':
-        p_x0, x_next = self._ddpm_caching_update(
-          x, t, dt, p_x0=p_x0_cache)
-        if p_x0_cache is None:
-          if t[0] > self.config.sampling.is_start or t[0] < self.config.sampling.is_end:
-            p_x0_cache = p_x0
+        if use_energy_remask:
+          if p_x0_cache is None:
+            p_x0 = self.forward(x, sigma_t).exp()
           else:
-            # Energy-based Importance Sampling
-            k = self.config.sampling.is_size
-            x0_samples = _sample_categorical(
-              p_x0, num_samples=k)  # (batch_size * k, seq_len)
-            energy = self.ebm_forward(
-              x.repeat(k, 1), t.repeat(k, 1), x0=x0_samples,
-              log_p_x0=p_x0.repeat(k, 1, 1),
-              attention_mask=torch.ones_like(x0_samples))
-            energy = energy.view(x.shape[0], k)
-            energy = energy - energy.max(dim=-1, keepdim=True)[0] # for numerical stability
-            importance_weights = torch.softmax(
-              energy / self.config.sampling.is_temp, dim=-1)
-            x0_index = torch.multinomial(
-              importance_weights, 1).view(x.shape[0])
-            x0_samples = x0_samples.view(x.shape[0], k, -1)
-            x0 = x0_samples[torch.arange(x.shape[0]), x0_index]
-            p_x0_cache = F.one_hot(x0, num_classes=self.vocab_size).float()
-            _, x_next = self._ddpm_caching_update(x, t, dt, p_x0=p_x0_cache)
+            p_x0 = p_x0_cache
+          x0_prop = torch.where(
+            x == self.mask_index,
+            _sample_categorical(p_x0, num_samples=1),
+            x,
+          )
+          _, token_contrib = self.ebm_forward(
+            x,
+            sigma_ebm,
+            x0=x0_prop,
+            log_p_x0=None,
+            attention_mask=None,
+            return_token_contrib=True,
+          )
+          if token_contrib is None:
+            S_masked = None
+          else:
+            mask_f = (x == self.mask_index).to(token_contrib.dtype)
+            S_masked = (token_contrib * mask_f).sum(dim=-1, keepdim=True)
+          fallback = (
+            S_masked is None
+            or (S_masked < eps_w).any())
+          if fallback:
+            p_x0, x_next = self._ddpm_caching_update(
+              x, t, dt, p_x0=p_x0_cache)
+          else:
+            mask_f = (x == self.mask_index).to(token_contrib.dtype)
+            M = mask_f.sum(dim=-1, keepdim=True).clamp(min=1.0)
+            tau = S_masked / M
+            p_keep = token_contrib / (token_contrib + tau + 1e-30)
+            p_keep = torch.where(
+              x == self.mask_index, p_keep, torch.zeros_like(p_keep))
+            keep = torch.rand_like(p_keep) < p_keep
+            proposed = torch.where(
+              keep,
+              torch.full_like(x, self.mask_index),
+              x0_prop)
+            x_next = torch.where(x == self.mask_index, proposed, x)
+            took_remask = True
+        else:
+          p_x0, x_next = self._ddpm_caching_update(
+            x, t, dt, p_x0=p_x0_cache)
+
         if (not torch.allclose(x_next, x)
             or self.time_conditioning):
-          # Disable caching
           p_x0_cache = None
+        else:
+          if took_remask:
+            p_x0_cache = p_x0
+          elif p_x0_cache is None:
+            if tc > is_start or tc < is_end:
+              p_x0_cache = p_x0
         x = x_next
       else:
         raise ValueError(

@@ -68,6 +68,7 @@ srun --ntasks=2 --ntasks-per-node=2 --export=ALL "$ENV/bin/python" -u -m main \
   ebm_backbone=dit \
   loader.global_batch_size=512 \
   loader.num_workers=0 \
+  trainer.max_epochs=-1 \
   trainer.max_steps=10000 \
   trainer.val_check_interval=1.0 \
   optim.lr=0.0003 \

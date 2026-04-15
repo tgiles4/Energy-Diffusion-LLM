@@ -1,0 +1,11 @@
+# Minimal pip deps: Python 3.13 + PyTorch 2.7 + CUDA 12.8 (Windows smoke test).
+# Used by: conda env create -f environment.win313-torch27-cu128.yml
+#
+# Optional — FlashAttention (match torch 2.7 / cu128 / cp313), after env is ready:
+#   pip install "https://github.com/petermg/flash_attn_windows/releases/download/4/flash_attn-2.7.4.post1+cu128.torch270-cp313-cp313-win_amd64.whl"
+#
+--index-url https://download.pytorch.org/whl/cu128
+--extra-index-url https://pypi.org/simple
+torch==2.7.0
+torchvision==0.22.0
+torchaudio==2.7.0

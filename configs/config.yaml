@@ -12,6 +12,10 @@ train_mdlm_only: false  # if true, train Diffusion (MDLM) only; if false, train 
 diffusion: absorbing_state
 backbone: dit  # dit / dimamba / ar : backbone for Diffusion
 ebm_backbone: hf_dit  # dit / dimamba / ar : backbone for EBM
+# Pluggable scalar energy readout after EBM `output_layer` (dit/hf_dit only).
+# mean_pool: global mean over time then `energy_head` (legacy).
+# token_additive: per-position nonnegative contributions; E = sum_i contrib_i; exposes `token_contrib` [B,T] for remasking.
+ebm_readout: mean_pool  # mean_pool | token_additive
 parameterization: subs  # subs / d3pm / sedd
 time_conditioning: False
 T: 0  # 0 (continuous time) / 1000 
@@ -38,11 +42,15 @@ sampling:
   semi_ar: False
   stride_length: 1
   num_strides: 1
-  # importance sampling
+  # Time band for EBM sampler (t decreases from 1 toward 0): is_end <= t <= is_start.
+  # Legacy names: `is_size` / `is_temp` were used by removed k-sample EBM IS; kept for CLI/scripts.
   is_size: 2
   is_start: 0.6
   is_end: 0.4
   is_temp: 1
+  # EBM (dit/hf_dit): optional energy-weighted remask inside the band; requires token_additive readout.
+  ebm_remask: false
+  ebm_remask_weight_eps: 1e-8
   # ar ebm
   ar_carry_over: True
 
