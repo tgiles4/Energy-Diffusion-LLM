@@ -25,7 +25,7 @@
 #SBATCH --ntasks-per-node=2
 #SBATCH --constraint=amd
 #SBATCH --mem=64G
-#SBATCH --time=0-06:00:00
+#SBATCH --time=0-12:00:00
 
 export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path="${SCRATCH}/edlm"
@@ -60,6 +60,8 @@ module load cuda/12.4.0
 
 ENV="${SCRATCH}/edlm/venv"
 export HYDRA_FULL_ERROR=1
+# Optional: reduce allocator fragmentation on long runs (see PyTorch CUDA memory notes).
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
 
 # W&B key: optional, loaded from a local file if present.
 # Create once:
@@ -72,6 +74,10 @@ fi
 # EBM finetune from diffusion checkpoint with token-additive readout.
 # Remask is a sampler-time feature (not part of NCE loss), but we set it here
 # so sample/eval behavior from this run can use the new path without extra overrides.
+#
+# Batch layout (2 GPUs, DDP): dataloader asserts
+#   global_batch_size == batch_size * num_gpus * accumulate_grad_batches
+# Per-GPU microbatch 128, grad accumulation 2 → global 512.
 srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main \
   ++path="${path}" \
   train_mdlm_only=false \
@@ -88,6 +94,8 @@ srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   sampling.is_end=0.4 \
   sampling.ebm_remask_weight_eps=1e-8 \
   loader.global_batch_size=512 \
+  loader.batch_size=128 \
+  loader.eval_global_batch_size=256 \
   loader.num_workers=0 \
   trainer.max_steps=400000 \
   trainer.val_check_interval=1.0 \
