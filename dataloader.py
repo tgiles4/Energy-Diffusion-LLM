@@ -11,6 +11,7 @@ import zipfile
 
 import datasets
 import fsspec
+import omegaconf
 import requests
 import tokenizers
 import torch
@@ -300,9 +301,39 @@ def _group_texts(examples, block_size, bos, eos):
   return result
 
 
+def resolve_preprocess_parallelism(config):
+  """Return (num_proc, map_batch_size, writer_batch_size) for get_dataset maps.
+
+  `preprocess_num_proc` null / missing: use len(os.sched_getaffinity(0)) so Slurm
+  CPU allocation matches HF datasets multiprocessing.
+  """
+  sched = len(os.sched_getaffinity(0))
+  n = omegaconf.OmegaConf.select(config, 'data.preprocess_num_proc')
+  if n is None:
+    n = sched
+  else:
+    n = int(n)
+  mbs = omegaconf.OmegaConf.select(config, 'data.preprocess_map_batch_size')
+  if mbs is None:
+    mbs = 4000
+  else:
+    mbs = int(mbs)
+  wbs = omegaconf.OmegaConf.select(config, 'data.preprocess_writer_batch_size')
+  if wbs is None:
+    wbs = max(1000, mbs)
+  else:
+    wbs = int(wbs)
+  return n, mbs, wbs
+
+
 def get_dataset(
     dataset_name, tokenizer, wrap, mode, cache_dir,
-    block_size=1024, num_proc=len(os.sched_getaffinity(0)), streaming=False):
+    block_size=1024, num_proc=None, streaming=False,
+    map_batch_size=4000, writer_batch_size=None):
+  if num_proc is None:
+    num_proc = len(os.sched_getaffinity(0))
+  if writer_batch_size is None:
+    writer_batch_size = max(1000, map_batch_size)
   if wrap:
     filename = f'{dataset_name}_{mode}_bs{block_size}_wrapped.dat'
   else:
@@ -441,11 +472,15 @@ def get_dataset(
     tokenized_dataset = data.map(
       preprocess_and_tokenize,
       batched=True,
+      batch_size=map_batch_size,
+      writer_batch_size=writer_batch_size,
       desc='Tokenizing')
   else:
     tokenized_dataset = data.map(
       preprocess_and_tokenize,
       batched=True,
+      batch_size=map_batch_size,
+      writer_batch_size=writer_batch_size,
       num_proc=num_proc,
       load_from_cache_file=True,
       desc='Tokenizing')
@@ -472,11 +507,15 @@ def get_dataset(
     chunked_dataset = tokenized_dataset.map(
       group_texts,
       batched=True,
+      batch_size=map_batch_size,
+      writer_batch_size=writer_batch_size,
       desc='Grouping')
   else:
     chunked_dataset = tokenized_dataset.map(
       group_texts,
       batched=True,
+      batch_size=map_batch_size,
+      writer_batch_size=writer_batch_size,
       num_proc=num_proc,
       load_from_cache_file=True,
       desc='Grouping')
@@ -540,6 +579,7 @@ def get_dataloaders(config, tokenizer, skip_train=False,
     raise ValueError(
       f'Eval Batch Size for {config.eval.batch_size} '
       f'not divisible by {num_gpus}.')
+  nproc, mbs, wbs = resolve_preprocess_parallelism(config)
   if skip_train:
     train_set = None
   else:
@@ -549,7 +589,11 @@ def get_dataloaders(config, tokenizer, skip_train=False,
       mode='train',
       wrap=config.data.wrap,
       cache_dir=config.data.cache_dir,
-      block_size=config.model.length)
+      block_size=config.model.length,
+      streaming=config.data.streaming,
+      num_proc=nproc,
+      map_batch_size=mbs,
+      writer_batch_size=wbs)
   
   if config.data.valid in ['text8', 'lm1b', 'ag_news']:
     validation_split = 'test'
@@ -565,7 +609,10 @@ def get_dataloaders(config, tokenizer, skip_train=False,
       mode=validation_split,
       cache_dir=config.data.cache_dir,
       block_size=config.model.length,
-      streaming=False)
+      streaming=False,
+      num_proc=nproc,
+      map_batch_size=mbs,
+      writer_batch_size=wbs)
 
   if skip_train:
     train_loader = None
