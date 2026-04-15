@@ -77,11 +77,8 @@ srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   train_mdlm_only=false \
   data=openwebtext \
   model=small \
-  model.length=256 \
-  model.hidden_size=768 \
-  model.n_blocks=12 \
-  model.n_heads=12 \
-  model.dropout=0.05 \
+  model.length=1024 \
+  model.dropout=0.1 \
   eval.checkpoint_path="${MDLM_CKPT}" \
   ebm_backbone=hf_dit \
   ebm_readout=token_additive \
