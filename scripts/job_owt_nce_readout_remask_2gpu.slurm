@@ -1,10 +1,10 @@
 #!/bin/bash
 # OpenWebText NCE EBM finetuning (token-additive readout + remask-ready sampler config).
-# Requests 2x A100 80GB. Run after an MDLM checkpoint is available.
+# Requests 4x A100 80GB. Run after an MDLM checkpoint is available.
 # Partition notes:
 #   - gpuq: non-pre-emptible
 #   - contrib-gpuq: same nodes, may be pre-empted (often faster queue time)
-# `sgpu` shows availability: need I:2 for two idle GPUs.
+# `sgpu` shows availability: need I:4 for four idle GPUs.
 #
 # Submit examples:
 #   sbatch scripts/job_owt_nce_readout_remask_2gpu.slurm
@@ -17,12 +17,12 @@
 #SBATCH --job-name=owt_nce_readout_remask
 #SBATCH --qos=gpu
 #SBATCH --partition=contrib-gpuq
-#SBATCH --gres=gpu:A100.80gb:2
+#SBATCH --gres=gpu:A100.80gb:4
 #SBATCH --output=owt_nce_readout_remask-%j.out
 #SBATCH --error=owt_nce_readout_remask-%j.err
 #SBATCH --export=NONE
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=2
+#SBATCH --ntasks-per-node=4
 #SBATCH --constraint=amd
 #SBATCH --mem=64G
 #SBATCH --time=0-12:00:00
@@ -75,12 +75,12 @@ fi
 # Remask is a sampler-time feature (not part of NCE loss), but we set it here
 # so sample/eval behavior from this run can use the new path without extra overrides.
 #
-# Batch layout (2 GPUs, DDP): dataloader asserts
+# Batch layout (4 GPUs, DDP): dataloader asserts
 #   global_batch_size == batch_size * num_gpus * accumulate_grad_batches
-# Per-GPU microbatch 128, grad accumulation 2 → global 512.
+# Per-GPU microbatch 32, grad accumulation 4 → global 512.
 # Val builds full log_p_x0 [B,T,V] (~50k vocab) + exp + Gumbel noise — memory ~linear in
-# eval batch per GPU. 256 global (128/GPU) OOM’d; try 128 global (64/GPU) first, then 64 or 32 if needed.
-srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main \
+# eval batch per GPU. With eval_global_batch_size=128 on 4 GPUs, per-GPU eval batch is 32.
+srun --ntasks=4 --ntasks-per-node=4 --export=ALL "${ENV}/bin/python" -u -m main \
   ++path="${path}" \
   train_mdlm_only=false \
   data=openwebtext \
@@ -96,7 +96,7 @@ srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   sampling.is_end=0.4 \
   sampling.ebm_remask_weight_eps=1e-8 \
   loader.global_batch_size=512 \
-  loader.batch_size=128 \
+  loader.batch_size=32 \
   loader.eval_global_batch_size=128 \
   loader.num_workers=0 \
   trainer.max_steps=400000 \
