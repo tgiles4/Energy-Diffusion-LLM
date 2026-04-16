@@ -1,10 +1,10 @@
 #!/bin/bash
 # OpenWebText NCE EBM finetuning (token-additive readout + remask-ready sampler config).
-# Requests 2x A100 80GB on 1 node. Run after an MDLM checkpoint is available.
+# Requests 4x A100 80GB across 2 nodes (2 GPUs/node). Run after an MDLM checkpoint is available.
 # Partition notes:
 #   - gpuq: non-pre-emptible
 #   - contrib-gpuq: same nodes, may be pre-empted (often faster queue time)
-# `sgpu` shows availability: need I:2 for two idle GPUs.
+# `sgpu` shows availability: need enough free A100.80gb to place 2 GPUs on each of 2 nodes.
 #
 # Submit examples:
 #   sbatch scripts/job_owt_nce_readout_remask_2gpu.slurm
@@ -16,12 +16,12 @@
 #
 #SBATCH --job-name=owt_nce_readout_remask
 #SBATCH --qos=gpu
-#SBATCH --partition=contrib-gpuq
+#SBATCH --partition=gpuq
 #SBATCH --gres=gpu:A100.80gb:2
 #SBATCH --output=owt_nce_readout_remask-%j.out
 #SBATCH --error=owt_nce_readout_remask-%j.err
 #SBATCH --export=NONE
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=2
 #SBATCH --constraint=amd
 #SBATCH --mem=64G
@@ -75,13 +75,13 @@ fi
 # Remask is a sampler-time feature (not part of NCE loss), but we set it here
 # so sample/eval behavior from this run can use the new path without extra overrides.
 #
-# Batch layout (1 node x 2 GPUs, DDP): dataloader asserts
+# Batch layout (2 nodes x 2 GPUs, DDP): dataloader asserts
 #   global_batch_size == batch_size * num_gpus * accumulate_grad_batches
 # Per-GPU microbatch 32, grad accumulation is derived from
 #   loader.global_batch_size / (trainer.num_nodes * trainer.devices * loader.batch_size).
 # Val builds full log_p_x0 [B,T,V] (~50k vocab) + exp + Gumbel noise — memory ~linear in
-# eval batch per GPU. With eval_global_batch_size=128 on 2 GPUs total, per-GPU eval batch is 64.
-srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main \
+# eval batch per GPU. With eval_global_batch_size=128 on 4 GPUs total, per-GPU eval batch is 32.
+srun --ntasks=4 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main \
   ++path="${path}" \
   train_mdlm_only=false \
   data=openwebtext \
@@ -100,13 +100,13 @@ srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   loader.batch_size=32 \
   loader.eval_global_batch_size=128 \
   loader.num_workers=0 \
-  trainer.num_nodes=1 \
+  trainer.num_nodes=2 \
   trainer.max_steps=400000 \
   trainer.val_check_interval=1.0 \
   optim.lr=0.0003 \
   optim.weight_decay=0.03 \
   lr_scheduler=cosine_decay_warmup \
-  lr_scheduler.warmup_t=2000 \
+  lr_scheduler.warmup_t=2500 \
   checkpointing.save_dir="${path}" \
   checkpointing.resume_from_ckpt=false \
   hydra.run.dir=outputs/owt_nce_readout_remask \

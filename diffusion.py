@@ -1407,9 +1407,9 @@ class EBM(Diffusion):
     assert self.parameterization == 'subs'
 
     if prefix == 'train':
-      # Noise contrastive estimation
-      loss = - (torch.log(torch.sigmoid(-energy_pos) + 1e-8) \
-                + torch.log(torch.sigmoid(energy_neg) + 1e-8))
+      # Noise contrastive estimation. Use softplus for stability: -log(sigmoid(±x)) =
+      # softplus(∓x); the old +1e-8 form plateaus at -log(1e-8) ≈ 18.42 when saturated.
+      loss = F.softplus(energy_pos) + F.softplus(-energy_neg)
       
       assert loss.shape[-1] == 1 and loss.ndim == 2
       return loss
