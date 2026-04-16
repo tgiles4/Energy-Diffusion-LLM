@@ -78,6 +78,8 @@ fi
 # Batch layout (2 GPUs, DDP): dataloader asserts
 #   global_batch_size == batch_size * num_gpus * accumulate_grad_batches
 # Per-GPU microbatch 128, grad accumulation 2 → global 512.
+# Val builds full log_p_x0 [B,T,V] (~50k vocab) + exp + Gumbel noise — memory ~linear in
+# eval batch per GPU. 256 global (128/GPU) OOM’d; try 128 global (64/GPU) first, then 64 or 32 if needed.
 srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main \
   ++path="${path}" \
   train_mdlm_only=false \
@@ -95,7 +97,7 @@ srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   sampling.ebm_remask_weight_eps=1e-8 \
   loader.global_batch_size=512 \
   loader.batch_size=128 \
-  loader.eval_global_batch_size=256 \
+  loader.eval_global_batch_size=128 \
   loader.num_workers=0 \
   trainer.max_steps=400000 \
   trainer.val_check_interval=1.0 \

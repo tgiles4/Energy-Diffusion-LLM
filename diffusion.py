@@ -24,8 +24,9 @@ LOG2 = math.log(2)
 
 def _sample_categorical(categorical_probs, num_samples=1):
   assert categorical_probs.ndim == 3
-  categorical_probs = categorical_probs.repeat(
-    num_samples, 1, 1)
+  if num_samples != 1:
+    categorical_probs = categorical_probs.repeat(
+      num_samples, 1, 1)
   gumbel_norm = (
     1e-10
     - (torch.rand_like(categorical_probs) + 1e-10).log())
