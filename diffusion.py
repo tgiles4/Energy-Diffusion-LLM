@@ -1149,16 +1149,16 @@ class EBM(Diffusion):
 
     Returns:
       energy: Tensor [B, 1]
-      token_contrib: Optional[Tensor [B, T]] — per-position nonnegative weights when
+      token_contrib: Optional[Tensor [B, T]] — per-position gate-scaled scores when
         `ebm_readout` is ``token_additive``; else ``None``.
     """
     ebm_readout = getattr(self.config, 'ebm_readout', 'mean_pool')
     if ebm_readout == 'token_additive':
       h = self.ebm.token_mlp(x)
       score = self.ebm.token_score(h)
-      gate = torch.sigmoid(self.ebm.token_gate(h)).squeeze(-1)
-      # token_contrib = (gate * F.softplus(score)).squeeze(-1)
-      token_contrib = gate * score
+      gate = torch.sigmoid(self.ebm.token_gate(h))
+      # Keep gate and score as [B, T, 1]; squeezing only one of them breaks broadcasting.
+      token_contrib = (gate * score).squeeze(-1)
       energy = token_contrib.sum(dim=-1, keepdim=True)
       return energy, token_contrib
     mean_pool = x.mean(dim=1)
