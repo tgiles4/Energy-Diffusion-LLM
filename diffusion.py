@@ -1156,8 +1156,9 @@ class EBM(Diffusion):
     if ebm_readout == 'token_additive':
       h = self.ebm.token_mlp(x)
       score = self.ebm.token_score(h)
-      gate = torch.sigmoid(self.ebm.token_gate(h))
-      token_contrib = (gate * F.softplus(score)).squeeze(-1)
+      gate = torch.sigmoid(self.ebm.token_gate(h)).squeeze(-1)
+      # token_contrib = (gate * F.softplus(score)).squeeze(-1)
+      token_contrib = gate * score
       energy = token_contrib.sum(dim=-1, keepdim=True)
       return energy, token_contrib
     mean_pool = x.mean(dim=1)
@@ -1415,13 +1416,15 @@ class EBM(Diffusion):
       # E_neg > E_pos means higher energy on the negative draw (desirable separation).
       gap = energy_neg - energy_pos
       contrast_acc = (energy_neg > energy_pos).float().mean()
+      # Scalars as Python floats for Lightning self.log (avoids DDP/W&B issues with
+      # CUDA/bf16 tensors and on_epoch reducers).
       self._ebm_train_diag = {
-        'train/ebm_energy_pos_mean': energy_pos.detach().mean(),
-        'train/ebm_energy_neg_mean': energy_neg.detach().mean(),
-        'train/ebm_energy_gap_mean': gap.detach().mean(),
-        'train/ebm_softplus_pos_mean': term_pos.detach().mean(),
-        'train/ebm_softplus_neg_mean': term_neg.detach().mean(),
-        'train/ebm_contrast_acc': contrast_acc.detach(),
+        'train/ebm_energy_pos_mean': energy_pos.detach().float().mean().item(),
+        'train/ebm_energy_neg_mean': energy_neg.detach().float().mean().item(),
+        'train/ebm_energy_gap_mean': gap.detach().float().mean().item(),
+        'train/ebm_softplus_pos_mean': term_pos.detach().float().mean().item(),
+        'train/ebm_softplus_neg_mean': term_neg.detach().float().mean().item(),
+        'train/ebm_contrast_acc': contrast_acc.detach().float().item(),
       }
 
       assert loss.shape[-1] == 1 and loss.ndim == 2
@@ -1472,12 +1475,16 @@ class EBM(Diffusion):
         f'Unknown prefix: {prefix}')
 
   def training_step(self, batch, batch_idx):
+    micro_bs = batch['input_ids'].shape[0]
     loss = self._compute_loss(batch, prefix='train')
     self.log(name='trainer/loss',
              value=loss.item(),
              on_step=True,
              on_epoch=False,
-             sync_dist=True)
+             sync_dist=True,
+             batch_size=micro_bs)
+    # Diagnostic scalars only (means over the local microbatch); not raw energy tensors.
+    # rank_zero_only avoids extra NCCL collectives per metric (sync_dist + object broadcast).
     diag = getattr(self, '_ebm_train_diag', None)
     if diag is not None:
       for key, val in diag.items():
@@ -1485,8 +1492,8 @@ class EBM(Diffusion):
           key,
           val,
           on_step=True,
-          on_epoch=True,
-          sync_dist=True,
+          on_epoch=False,
+          rank_zero_only=True,
           prog_bar=False,
         )
       self._ebm_train_diag = None
