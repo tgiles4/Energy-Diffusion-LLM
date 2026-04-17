@@ -1409,8 +1409,21 @@ class EBM(Diffusion):
     if prefix == 'train':
       # Noise contrastive estimation. Use softplus for stability: -log(sigmoid(±x)) =
       # softplus(∓x); the old +1e-8 form plateaus at -log(1e-8) ≈ 18.42 when saturated.
-      loss = F.softplus(energy_pos) + F.softplus(-energy_neg)
-      
+      term_pos = F.softplus(energy_pos)
+      term_neg = F.softplus(-energy_neg)
+      loss = term_pos + term_neg
+      # E_neg > E_pos means higher energy on the negative draw (desirable separation).
+      gap = energy_neg - energy_pos
+      contrast_acc = (energy_neg > energy_pos).float().mean()
+      self._ebm_train_diag = {
+        'train/ebm_energy_pos_mean': energy_pos.detach().mean(),
+        'train/ebm_energy_neg_mean': energy_neg.detach().mean(),
+        'train/ebm_energy_gap_mean': gap.detach().mean(),
+        'train/ebm_softplus_pos_mean': term_pos.detach().mean(),
+        'train/ebm_softplus_neg_mean': term_neg.detach().mean(),
+        'train/ebm_contrast_acc': contrast_acc.detach(),
+      }
+
       assert loss.shape[-1] == 1 and loss.ndim == 2
       return loss
     elif prefix == 'val' or prefix == 'test':
@@ -1457,3 +1470,24 @@ class EBM(Diffusion):
     else:
       raise ValueError(
         f'Unknown prefix: {prefix}')
+
+  def training_step(self, batch, batch_idx):
+    loss = self._compute_loss(batch, prefix='train')
+    self.log(name='trainer/loss',
+             value=loss.item(),
+             on_step=True,
+             on_epoch=False,
+             sync_dist=True)
+    diag = getattr(self, '_ebm_train_diag', None)
+    if diag is not None:
+      for key, val in diag.items():
+        self.log(
+          key,
+          val,
+          on_step=True,
+          on_epoch=True,
+          sync_dist=True,
+          prog_bar=False,
+        )
+      self._ebm_train_diag = None
+    return loss
