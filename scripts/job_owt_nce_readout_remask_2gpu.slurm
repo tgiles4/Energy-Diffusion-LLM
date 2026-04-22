@@ -122,4 +122,4 @@ srun --ntasks=4 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   wandb.id=null \
   wandb.group=owt_nce_readout_remask \
   wandb.name=owt_nce_readout_remask \
-  wandb.notes="OpenWebText NCE EBM finetuning (token-additive readout + remask-ready sampler config)."
+  "wandb.notes='OpenWebText NCE EBM finetuning (token-additive readout + remask-ready sampler config).'"
