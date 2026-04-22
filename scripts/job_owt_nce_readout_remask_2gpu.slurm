@@ -16,7 +16,7 @@
 #
 #SBATCH --job-name=owt_nce_readout_remask
 #SBATCH --qos=gpu
-#SBATCH --partition=gpuq
+#SBATCH --partition=contrib-gpuq
 #SBATCH --gres=gpu:A100.80gb:2
 #SBATCH --output=owt_nce_readout_remask-%j.out
 #SBATCH --error=owt_nce_readout_remask-%j.err
@@ -25,11 +25,13 @@
 #SBATCH --ntasks-per-node=2
 #SBATCH --constraint=amd
 #SBATCH --mem=64G
-#SBATCH --time=0-12:00:00
+#SBATCH --time=3-0:00:00
 
 export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path="${SCRATCH}/edlm"
 export MDLM_CKPT="${MDLM_CKPT:-kuleshov-group/mdlm-owt}"
+export EXP_NAME="${EXP_NAME:-owt_nce_readout_remask}"
+export CKPT_RUN_DIR="${path}/checkpoints/openwebtext/${EXP_NAME}"
 
 mkdir -p "${path}"
 cd "${path}" || exit 1
@@ -81,10 +83,12 @@ fi
 #   loader.global_batch_size / (trainer.num_nodes * trainer.devices * loader.batch_size).
 # Val builds full log_p_x0 [B,T,V] (~50k vocab) + exp + Gumbel noise — memory ~linear in
 # eval batch per GPU. With eval_global_batch_size=128 on 4 GPUs total, per-GPU eval batch is 32.
+# Checkpointing is pinned to a stable run dir so interrupted jobs resume from last.ckpt.
 srun --ntasks=4 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main \
   ++path="${path}" \
   train_mdlm_only=false \
   data=openwebtext \
+  data.valid=openwebtext-valid \
   model=small \
   model.length=1024 \
   model.dropout=0.1 \
@@ -107,8 +111,13 @@ srun --ntasks=4 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   optim.weight_decay=0.03 \
   lr_scheduler=cosine_decay_warmup \
   lr_scheduler.warmup_t=2500 \
-  checkpointing.save_dir="${path}" \
-  checkpointing.resume_from_ckpt=false \
+  callbacks.checkpoint_monitor.monitor=val/nll \
+  callbacks.checkpoint_monitor.save_top_k=3 \
+  callbacks.checkpoint_monitor.save_last=true \
+  callbacks.checkpoint_every_n_steps.every_n_train_steps=125 \
+  checkpointing.run_dir="${CKPT_RUN_DIR}" \
+  checkpointing.resume_from_ckpt=true \
+  checkpointing.resume_ckpt_path="${CKPT_RUN_DIR}/last.ckpt" \
   hydra.run.dir=outputs/owt_nce_readout_remask \
   wandb.id=null \
   wandb.group=owt_nce_readout_remask \
