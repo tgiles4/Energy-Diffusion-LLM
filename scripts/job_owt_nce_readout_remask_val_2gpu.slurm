@@ -21,7 +21,7 @@
 #SBATCH --ntasks-per-node=2
 #SBATCH --constraint=amd
 #SBATCH --mem=64G
-#SBATCH --time=0-02:00:00
+#SBATCH --time=3-00:00:00
 
 export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path="${SCRATCH}/edlm"
