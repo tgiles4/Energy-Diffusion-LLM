@@ -12,7 +12,7 @@
 #
 #SBATCH --job-name=owt_nce_readout_val
 #SBATCH --qos=gpu
-#SBATCH --partition=gpuq
+#SBATCH --partition=contrib-gpuq
 #SBATCH --gres=gpu:A100.80gb:2
 #SBATCH --output=owt_nce_readout_val-%j.out
 #SBATCH --error=owt_nce_readout_val-%j.err
