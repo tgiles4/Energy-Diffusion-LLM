@@ -113,6 +113,9 @@ hydra:
 checkpointing:
   # Use custom `save_dir` if, e.g., saving to S3 bucket, otherwise leave this parameter as is
   save_dir: ${cwd:}
-  # Note: `checkpoints` path should correspond to `checkpoint_every_n_steps.dirpath`
+  dataset: ${data.train}
+  # Flat run id for per-run checkpoint folders; includes microseconds to reduce collisions.
+  timestamp: ${now:%Y%m%dT%H%M%S%f}
+  run_dir: ${.save_dir}/checkpoints/${.dataset}/${.timestamp}
   resume_from_ckpt: true
-  resume_ckpt_path: ${.save_dir}/checkpoints/last.ckpt
+  resume_ckpt_path: ${.run_dir}/last.ckpt
