@@ -8,7 +8,7 @@
 #   sbatch --export=NONE,NCE_CKPT=/abs/path/to/checkpoint.ckpt scripts/job_owt_nce_readout_remask_val_2gpu.slurm
 #
 # Default checkpoint path matches training script output:
-#   ${SCRATCH}/edlm/checkpoints/last.ckpt
+#   ${SCRATCH}/edlm/checkpoints/last-v5.ckpt
 #
 #SBATCH --job-name=owt_nce_readout_val
 #SBATCH --qos=gpu
@@ -25,7 +25,7 @@
 
 export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path="${SCRATCH}/edlm"
-export NCE_CKPT="${NCE_CKPT:-${path}/checkpoints/last.ckpt}"
+export NCE_CKPT="${NCE_CKPT:-${path}/checkpoints/last-v5.ckpt}"
 
 mkdir -p "${path}"
 cd "${path}" || exit 1
