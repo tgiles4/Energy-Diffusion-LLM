@@ -1411,9 +1411,9 @@ class EBM(Diffusion):
     if prefix == 'train':
       # Noise contrastive estimation. Use softplus for stability: -log(sigmoid(±x)) =
       # softplus(∓x); the old +1e-8 form plateaus at -log(1e-8) ≈ 18.42 when saturated.
+      loss = F.softplus(energy_pos - energy_neg)
       term_pos = F.softplus(energy_pos)
       term_neg = F.softplus(-energy_neg)
-      loss = term_pos + term_neg
       # E_neg > E_pos means higher energy on the negative draw (desirable separation).
       gap = energy_neg - energy_pos
       contrast_acc = (energy_neg > energy_pos).float().mean()
