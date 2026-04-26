@@ -1156,7 +1156,7 @@ class EBM(Diffusion):
     ebm_readout = getattr(self.config, 'ebm_readout', 'mean_pool')
     if ebm_readout == 'token_additive':
       h = self.ebm.token_mlp(x)
-      score = torch.tanh(self.ebm.token_score(h))
+      score = F.softplus(self.ebm.token_score(h))
       gate = torch.sigmoid(self.ebm.token_gate(h))
       # Keep gate and score as [B, T, 1]; squeezing only one of them breaks broadcasting.
       token_contrib = (gate * score).squeeze(-1)
