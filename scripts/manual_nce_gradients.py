@@ -112,6 +112,8 @@ def main() -> None:
       "train_mdlm_only=false",
       "ebm_backbone=hf_dit",
       "ebm_readout=token_additive",
+      "sampling.ebm_use_grad_contrib=true",
+      "training.log_grad_contrib=true",
       f"eval.checkpoint_path={args.checkpoint}",
       f"model.length={args.length}",
       "trainer.devices=1",
@@ -176,6 +178,12 @@ def main() -> None:
     print(f"step {step + 1}/{args.steps}  loss={loss.item():.6f}")
     print("  " + " | ".join(grad_bits))
     print(f"  ||grad|| (all ebm params): {_grad_norm(model.ebm.parameters()):.6f}")
+    diag = getattr(model, "_ebm_train_diag", {}) or {}
+    grad_diag = {k: v for (k, v) in diag.items() if "grad_contrib" in k}
+    if grad_diag:
+      print("  grad contrib diagnostics:")
+      for key in sorted(grad_diag.keys()):
+        print(f"    {key}: {grad_diag[key]:.6g}")
 
   print("done.")
 

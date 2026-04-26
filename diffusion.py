@@ -1166,6 +1166,24 @@ class EBM(Diffusion):
     energy = self.ebm.energy_head(mean_pool)
     return energy, None
 
+  def _grad_token_contrib_from_energy(
+      self,
+      sequence_hidden: torch.Tensor,
+  ) -> torch.Tensor:
+    """Per-token saliency from ||dE/dx_i||_2 at post-output-layer hidden states."""
+    if not sequence_hidden.requires_grad:
+      sequence_hidden = sequence_hidden.detach().requires_grad_(True)
+    energy, _ = self._dit_energy_from_sequence_hidden(sequence_hidden)
+    grad_hidden = torch.autograd.grad(
+      outputs=energy.sum(),
+      inputs=sequence_hidden,
+      create_graph=False,
+      retain_graph=False,
+      allow_unused=False,
+    )[0]
+    token_contrib = grad_hidden.float().norm(p=2, dim=-1)
+    return token_contrib
+
   def ebm_forward(
       self,
       xt,
@@ -1174,8 +1192,12 @@ class EBM(Diffusion):
       log_p_x0=None,
       attention_mask=None,
       return_token_contrib: bool = False,
+      use_grad_token_contrib: typing.Optional[bool] = None,
   ):
     sigma = self._process_sigma(sigma)
+    if use_grad_token_contrib is None:
+      use_grad_token_contrib = bool(
+        getattr(self.config.sampling, 'ebm_use_grad_contrib', False))
 
     with torch.cuda.amp.autocast(dtype=torch.float32):
       indices = xt
@@ -1195,6 +1217,9 @@ class EBM(Diffusion):
           x = self.ebm.output_layer(x, c)
 
           energy, token_contrib = self._dit_energy_from_sequence_hidden(x)
+          if return_token_contrib and use_grad_token_contrib:
+            with torch.enable_grad():
+              token_contrib = self._grad_token_contrib_from_energy(x)
 
       elif self.config.ebm_backbone == 'ar':
         parameterization = self.parameterization
@@ -1321,7 +1346,9 @@ class EBM(Diffusion):
             S_masked = (token_contrib * mask_f).sum(dim=-1, keepdim=True)
           fallback = (
             S_masked is None
-            or (S_masked < eps_w).any())
+            or (S_masked < eps_w).any()
+            or (not torch.isfinite(token_contrib).all())
+            or (not torch.isfinite(S_masked).all()))
           if fallback:
             p_x0, x_next = self._ddpm_caching_update(
               x, t, dt, p_x0=p_x0_cache)
@@ -1427,6 +1454,33 @@ class EBM(Diffusion):
         'train/ebm_softplus_neg_mean': term_neg.detach().float().mean().item(),
         'train/ebm_contrast_acc': contrast_acc.detach().float().item(),
       }
+      if (self.config.ebm_backbone in ('dit', 'hf_dit')
+          and bool(getattr(self.config.training, 'log_grad_contrib', False))):
+        _, grad_token_contrib = self.ebm_forward(
+          xt,
+          unet_conditioning,
+          x0=x0_pos,
+          log_p_x0=None,
+          attention_mask=attention_mask,
+          return_token_contrib=True,
+          use_grad_token_contrib=True,
+        )
+        if grad_token_contrib is not None:
+          mask_f = (xt == self.mask_index).to(grad_token_contrib.dtype)
+          masked = grad_token_contrib * mask_f
+          masked_count = mask_f.sum(dim=-1).clamp(min=1.0)
+          masked_mean = (masked.sum(dim=-1) / masked_count).mean()
+          masked_max = masked.max(dim=-1).values.mean()
+          probs = masked / (masked.sum(dim=-1, keepdim=True) + 1e-30)
+          entropy = -(
+            probs * (probs + 1e-30).log()).sum(dim=-1)
+          entropy = (entropy / masked_count.log()).nan_to_num(
+            nan=0.0, posinf=0.0, neginf=0.0).mean()
+          self._ebm_train_diag.update({
+            'train/ebm_grad_contrib_mean': masked_mean.detach().float().item(),
+            'train/ebm_grad_contrib_max': masked_max.detach().float().item(),
+            'train/ebm_grad_contrib_entropy': entropy.detach().float().item(),
+          })
 
       assert loss.shape[-1] == 1 and loss.ndim == 2
       return loss

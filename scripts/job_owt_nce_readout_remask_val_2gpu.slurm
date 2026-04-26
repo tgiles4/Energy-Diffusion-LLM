@@ -73,6 +73,7 @@ srun --ntasks=2 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   ebm_readout=token_additive \
   sampling.predictor=ddpm_cache \
   sampling.ebm_remask=true \
+  sampling.ebm_use_grad_contrib=true \
   sampling.is_start=0.6 \
   sampling.is_end=0.4 \
   sampling.ebm_remask_weight_eps=1e-8 \
