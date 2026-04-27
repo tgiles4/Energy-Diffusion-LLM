@@ -30,7 +30,7 @@
 export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path="${SCRATCH}/edlm"
 export MDLM_CKPT="${MDLM_CKPT:-kuleshov-group/mdlm-owt}"
-export EXP_NAME="${EXP_NAME:-owt_nce_readout_remask_nce_paired_norm_softplus}"
+export EXP_NAME="${EXP_NAME:-owt_nvidia_nce}"
 export CKPT_RUN_DIR="${path}/checkpoints/openwebtext/${EXP_NAME}"
 
 mkdir -p "${path}"
@@ -94,10 +94,6 @@ srun --ntasks=4 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   model.dropout=0.1 \
   eval.checkpoint_path="${MDLM_CKPT}" \
   ebm_backbone=hf_dit \
-  ebm_readout=token_additive \
-  sampling.predictor=ddpm_cache \
-  sampling.ebm_remask=true \
-  sampling.ebm_use_grad_contrib=true \
   sampling.is_start=0.6 \
   sampling.is_end=0.4 \
   sampling.ebm_remask_weight_eps=1e-8 \
@@ -123,4 +119,4 @@ srun --ntasks=4 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   wandb.id=null \
   wandb.group=owt_nce_readout_remask \
   wandb.name=owt_nce_readout_remask \
-  "wandb.notes='OpenWebText NCE EBM finetuning (token-additive readout + remask-ready sampler config).'"
+  "wandb.notes='OpenWebText NCE EBM finetuning (NVIDIA's version).'"
