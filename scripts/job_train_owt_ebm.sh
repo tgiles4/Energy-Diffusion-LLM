@@ -30,7 +30,7 @@ export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path="${SCRATCH}/edlm"
 export MDLM_CKPT="${MDLM_CKPT:-kuleshov-group/mdlm-owt}"
 export EXP_NAME="${EXP_NAME:-ebm_owt_load_hf}"
-export CKPT_RUN_DIR="${path}/checkpoints/openwebtext/${EXP_NAME}"
+export CKPT_SAVE_DIR="${path}/openwebtext/${EXP_NAME}"
 
 mkdir -p "${path}"
 cd "${path}" || exit 1
@@ -93,6 +93,6 @@ srun --ntasks=4 --ntasks-per-node=2 --export=ALL "${ENV}/bin/python" -u -m main 
   optim.weight_decay=0.03 \
   lr_scheduler=cosine_decay_warmup \
   lr_scheduler.warmup_t=2500 \
-  checkpointing.run_dir="${CKPT_RUN_DIR}" \
+  checkpointing.save_dir="${CKPT_SAVE_DIR}" \
   checkpointing.resume_from_ckpt=true \
-  checkpointing.resume_ckpt_path="${CKPT_RUN_DIR}/last.ckpt"
+  checkpointing.resume_ckpt_path="${CKPT_SAVE_DIR}/checkpoints/last.ckpt"
