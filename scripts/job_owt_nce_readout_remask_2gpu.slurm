@@ -30,7 +30,7 @@
 export SCRATCH="${SCRATCH:-/scratch/$(id -un)}"
 export path="${SCRATCH}/edlm"
 export MDLM_CKPT="${MDLM_CKPT:-kuleshov-group/mdlm-owt}"
-export EXP_NAME="${EXP_NAME:-owt_nce_readout_remask_nce_paired_norm}"
+export EXP_NAME="${EXP_NAME:-owt_nce_readout_remask_nce_paired_norm_softplus}"
 export CKPT_RUN_DIR="${path}/checkpoints/openwebtext/${EXP_NAME}"
 
 mkdir -p "${path}"
